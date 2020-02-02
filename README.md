@@ -1,6 +1,10 @@
 # fh4-dashboard
 Forza Horizon 4 dashboard with MicroPython on ESP8266
 
+## Requirements
+
+- [SSD1306 library](https://raw.githubusercontent.com/micropython/micropython/master/drivers/display/ssd1306.py)
+
 ## Data format
 
 Data from https://github.com/richstokes/Forza-data-tools (thanks!)

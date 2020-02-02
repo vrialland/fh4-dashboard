@@ -3,10 +3,21 @@ import network
 from ucollections import namedtuple, OrderedDict
 import usocket
 import ustruct
+import utime
 
-from config import UDP_PORT, WIFI_PASSWORD, WIFI_SSID
+import ssd1306
+from config import (
+    SSD1306_ADDR,
+    SSD1306_SCL,
+    SSD1306_SDA,
+    SSD1306_HEIGHT,
+    SSD1306_WIDTH,
+    UDP_PORT,
+    WIFI_PASSWORD,
+    WIFI_SSID,
+)
 
-
+# Data structure of the sent packets
 ATTRS = (
     ("is_race_on", "i"),
     ("timestamp_ms", "I"),
@@ -96,15 +107,6 @@ ATTRS = (
     ("normalized_ai_brake_difference", "b"),
 )
 
-# Formatting
-def format_speed(speed_mps):
-    return int(speed_mps * 3600 / 1000)
-
-
-def format_gear(gear):
-    return str(gear) if gear else "R"
-
-
 # Definitions
 UNKNOWN_DATA_INDEX = 58
 UNKNOWN_DATA_SIZE = 12
@@ -118,26 +120,51 @@ PACKET_SIZE_BEFORE_UNKNOWN_DATA = ustruct.calcsize(PACKET_FORMAT[:UNKNOWN_DATA_I
 Telemetry = namedtuple("Telemetry", " ".join(k[0] for k in ATTRS))
 
 
+# SSD1306 setup
+i2c = I2C(scl=Pin(SSD1306_SCL), sda=Pin(SSD1306_SDA))
+screen = ssd1306.SSD1306_I2C(SSD1306_WIDTH, SSD1306_HEIGHT, i2c, addr=SSD1306_ADDR)
+
+
+# Formatting
+def format_speed(speed_mps):
+    return int(speed_mps * 3600 / 1000)
+
+
+def format_gear(gear):
+    return str(gear) if gear else "R"
+
+
 def setup_wifi():
     sta_if = network.WLAN(network.STA_IF)
     sta_if.active(True)
-    print('Connecting to Wifi network "{}"'.format(WIFI_SSID))
+    screen.fill(0)
+    screen.text("Connect", 0, 0)
+    screen.text("to", 0, 16)
+    screen.text(WIFI_SSID, 0, 32)
+    screen.show()
     sta_if.connect(WIFI_SSID, WIFI_PASSWORD)
     while not sta_if.isconnected():
         idle()
-        print(".", end="")
-    print()
     ip = sta_if.ifconfig()[0]
-    print("IP address: {}".format(ip))
+    screen.fill(0)
+    screen.text("Server", 0, 0)
+    screen.text(ip, 0, 16)
+    screen.text("Port {}".format(UDP_PORT), 0, 32)
+    screen.show()
     return ip
 
 
 def serve(ip):
+    last_update = 0
     sock = usocket.socket(usocket.AF_INET, usocket.SOCK_DGRAM)
     sock.bind((ip, UDP_PORT))
 
     while True:
         data = sock.recv(1024)
+        now = utime.ticks_ms()
+        # Update every 50ms
+        if now - last_update < 50:
+            continue
         # Remove the 12 unknown bits
         data = (
             data[:PACKET_SIZE_BEFORE_UNKNOWN_DATA]
@@ -145,7 +172,19 @@ def serve(ip):
         )
         data = ustruct.unpack(PACKET_FORMAT, data)
         telemetry = Telemetry(*data)
-        print(format_gear(telemetry.gear), format_speed(telemetry.speed))
+        screen.fill(0)
+        if telemetry.engine_max_rpm:  # Can be 0 in menus, or while fast travelling
+            width = int(
+                SSD1306_WIDTH
+                * (telemetry.current_engine_rpm / telemetry.engine_max_rpm)
+            )
+        else:
+            width = 0
+        screen.fill_rect(0, 0, width, 10, 1)
+        screen.text("Gear: {}".format(format_gear(telemetry.gear)), 0, 20)
+        screen.text("{} KM/H".format(format_speed(telemetry.speed)), 0, 40)
+        screen.show()
+        last_update = now
 
 
 ip = setup_wifi()
