@@ -4,10 +4,8 @@ from ucollections import namedtuple, OrderedDict
 import usocket
 import ustruct
 
-from config import WIFI_PASSWORD, WIFI_SSID
+from config import UDP_PORT, WIFI_PASSWORD, WIFI_SSID
 
-
-UDP_PORT = 9999
 
 ATTRS = (
     ("is_race_on", "i"),
